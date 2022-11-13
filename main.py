@@ -27,9 +27,9 @@ def login():
             
 def set_portpolio(tickers, interval):
     '''
-    거래량 많은순으로 10개만 리턴
+    거래량 많은순으로 count개만 리턴
     '''
-    count = 10 #갯수
+    count = 5
 
     result = []
     portpolio = []
@@ -50,7 +50,7 @@ def set_portpolio(tickers, interval):
         
     return portpolio
             
-def get_all_ohlcv(tickers, min_ago, prev_open, prev_high, prev_low, prev_close, prev_candle, prev_tick, interval):
+def get_all_ohlcv(tickers, t, prev_open, prev_high, prev_low, prev_close, prev_candle, prev_tick, interval):
     '''
     시가, 고가, 저가, 종가, 캔들 받아오기
     '''
@@ -62,9 +62,9 @@ def get_all_ohlcv(tickers, min_ago, prev_open, prev_high, prev_low, prev_close, 
         
         while df is None:
             time.sleep(0.05)
-            min_ago_time = min_ago.strftime("%Y%m%d %H:%M:00")
+            time_to = t.strftime("%Y%m%d %H:%M:%S")
 
-            df = pyupbit.get_ohlcv(ticker = ticker, interval=interval, to=min_ago_time, count=1)
+            df = pyupbit.get_ohlcv(ticker = ticker, interval=interval, to=time_to, count=1)
             # if df is not None:
             #     df_time = str(df.index[0])
             #     now_time = now.strftime("%Y-%m-%d %H:%M:00")
@@ -81,51 +81,64 @@ def get_all_ohlcv(tickers, min_ago, prev_open, prev_high, prev_low, prev_close, 
         else:
             candle[ticker] = False
         
-        if prev_tick == {}: # 틱
-            tick[ticker] = 0
-        else:
-            tick[ticker] = calc_tick(ticker, prev_open, prev_high, prev_low, prev_close, prev_candle, prev_tick, open, high, low, close, candle, tick)
-  
+        tick[ticker] = calc_tick(ticker, prev_open, prev_high, prev_low, prev_close, prev_candle, prev_tick, open, high, low, close, candle)
+              
     return open, high, low, close, candle, tick        
 
-def calc_tick(ticker, prev_open, prev_high, prev_low, prev_close, prev_candle, prev_tick, open, high, low, close, candle, tick):
+def calc_tick(ticker, prev_open, prev_high, prev_low, prev_close, prev_candle, prev_tick, open, high, low, close, candle):
     '''
     틱 계산
     '''
-    prev_candle_length = prev_close[ticker] - prev_open[ticker] # 이전 캔들 길이
-    candle_length = close[ticker] - open[ticker] # 캔들 길이
+    if prev_tick[ticker] is None:
+        return 0
     
     if candle == True:
-        # 틱 카운트 리셋이 나올수 있음
-        pass
+        candle_length = close[ticker] - open[ticker]
+    
+        return prev_tick[ticker] # 틱 카운트 리셋이 나올수 있음 일단 그대로
     else:
+        candle_length = open[ticker] - close[ticker]
+        
         if prev_candle == True: # 전 캔들이 양봉일 때
+            prev_candle_length = prev_close[ticker] - prev_open[ticker]
+            
             if prev_candle_length < candle_length * 2:
-                tick[ticker] = prev_tick[ticker] + 1
+                return prev_tick[ticker] + 1
         else: # 전 캔들이 음봉일 때
+            prev_candle_length = prev_open[ticker] - prev_close[ticker]
+            
             margin = prev_candle_length * 0.2
             if prev_close[ticker] - close[ticker] > margin: #
-                tick[ticker] = prev_tick[ticker] + 1
+                return prev_tick[ticker] + 1
+            
+    return prev_tick[ticker]
     
 def try_buy(tickers, tick, holdings):
     '''
     매수 시도
     '''
     for ticker in tickers:
-        if tick[ticker] == 3: #3틱이면
-            # current_price = 현재 값 받아서
-            # 매수
-            # holdings[ticker] = current_price
-            return holdings
-        elif:
-            return holdings
+        if holdings[ticker] != None:
+            if tick[ticker] == 3: #3틱이면
+                # current_price = 현재 값 받아서
+                # 매수
+                # holdings[ticker] = current_price
+                current_price = 100.0
+                print(ticker, "3틱임")
+                holdings[ticker] = current_price
+            else:
+                pass
 
-def is_holdings(tickers, holdings):
-    for ticker in tickers:
-        if holdings[ticker] is not None:
+def is_holdings(holdings): 
+    for holding in holdings:
+        if holdings[holding] is not None:
             return True
 
     return False
+
+def print_status(portpolio, open, high, low, close, candle, tick):
+    for ticker in portpolio:
+        print(ticker, "- [시가] ", open[ticker], ", [고가] ", high[ticker], ", [저가] ", low[ticker], ", [종가] ", close[ticker], ", [양음봉] ", candle[ticker], ", [틱] ", tick[ticker])
 
 # 로그인
 login()
@@ -142,15 +155,21 @@ portpolio = set_portpolio(tickers, "day")
 
 holdings = {ticker : None for ticker in portpolio}
 
-open, high, low, close, candle, tick = {}, {}, {}, {}, {}, {}
+open = {ticker : None for ticker in portpolio}
+high = {ticker : None for ticker in portpolio}
+low = {ticker : None for ticker in portpolio}
+close = {ticker : None for ticker in portpolio}
+candle = {ticker : None for ticker in portpolio}
+tick = {ticker : None for ticker in portpolio}
 
 while True:
     now = datetime.datetime.now() # 현재 시각
 
-    if not is_holdings(): # holding이 하나라도 있지 않으면
+    if not is_holdings(holdings): # holding이 하나라도 있지 않으면
         if now.minute % 5 == 0 and 0 < now.second < 10: # 5분봉
-            min_ago_5 = now - datetime.timedelta(minute=5) #캔들이 생긴 직후이기 때문에 5분전 데이터를 받아온다.
-            open, high, low, close, candle, tick = get_all_ohlcv(portpolio, min_ago_5, 
+            print(now)
+            t = now - datetime.timedelta(seconds=15) #캔들이 생긴 직후이기 때문에 전 5분봉 데이터를 받아온다.
+            open, high, low, close, candle, tick = get_all_ohlcv(portpolio, t, 
                                                                     prev_open=open, 
                                                                     prev_high=high, 
                                                                     prev_low=low, 
@@ -159,11 +178,13 @@ while True:
                                                                     prev_tick=tick, 
                                                                     interval="minute5")
             
-            print("open = ", open, "\n", "high = ", high, "\n", "low = ", low, "\n", "close = ", close, "\n", "candle = ", candle, "\n", "tick = ", tick)
+            print_status(portpolio, open, high, low, close, candle, tick)
             time.sleep(10)
 
-        holdings = try_buy(portpolio, tick, holdings)# 5분봉 3틱룰로 매수 시도.
-    elif: # holding이 있으면
+        try_buy(portpolio, tick, holdings)# 5분봉 3틱룰로 매수 시도.
+    else: # holding이 있으면
+        pass
         # holding이 있을 시 익절 or 순환매수매도
+        
 
     time.sleep(1)
