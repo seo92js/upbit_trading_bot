@@ -27,4 +27,5 @@
  [업비트 최소 주문금액]
  - KRW 5000원
 
- cat /dev/null > nohup.out
+[nuhup.out 초기화]
+- cat /dev/null > nohup.out

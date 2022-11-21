@@ -51,7 +51,7 @@ def init(tickers):
     
     return open, close, candle, tick, holdings
 
-def set_portpolio(interval):
+def set_portpolio():
     '''
     거래량 많은순으로 count개만 리턴
     '''
@@ -74,11 +74,13 @@ def set_portpolio(interval):
     portpolio = []
     
     for ticker in tickers:
-        df = pyupbit.get_ohlcv(ticker=ticker, interval=interval, count=1)
-        if df is not None:
-            value = df['value'][0]
-            volume = ticker, value
-            result.append(volume)
+        df = None
+        while df is None:
+            df = pyupbit.get_ohlcv(ticker=ticker, count=1)
+            time.sleep(0.1)
+        value = df['value'][0]
+        volume = ticker, value
+        result.append(volume)
         
     result.sort(key=lambda x:x[1])
     
@@ -107,6 +109,7 @@ def get_ohlcv(ticker, t, prev_open, prev_close, prev_candle, prev_tick, interval
     else:
         candle = False
     
+    print(ticker, " - 틱 계산")
     tick = calc_tick(prev_open, prev_close, prev_candle, prev_tick, open, close, candle)
         
     return open, close, candle, tick
@@ -145,13 +148,13 @@ def calc_tick(prev_open, prev_close, prev_candle, prev_tick, open, close, candle
             prev_candle_length = prev_close - prev_open
             
             if candle_length > prev_candle_length: # 전 캔들보다 길 때
-                #print(ticker, ", 양봉이고 전 캔들보다 김, 틱 초기화")
+                print("양봉이고 전 캔들보다 김, 틱 초기화", candle_length, ">", prev_candle_length)
                 return 0
         else:
             prev_candle_length = prev_open - prev_close
             
             if candle_length > prev_candle_length: # 전 캔들보다 길 때
-                #print(ticker, ", 양봉이고 전 캔들보다 김, 틱 초기화")
+                print("양봉이고 전 캔들보다 김, 틱 초기화", candle_length, ">", prev_candle_length)
                 return 0
     else: # 음봉일 때
         candle_length = open - close
@@ -160,14 +163,14 @@ def calc_tick(prev_open, prev_close, prev_candle, prev_tick, open, close, candle
             prev_candle_length = prev_close - prev_open
             
             if prev_candle_length * 2 < candle_length: # 캔들길이가 전 캔들길이의 2배 이상일 때
-                #print(ticker, ", 음봉이고 전 양봉 캔들 보다 2배 김, 틱 + 1")
+                print("음봉이고 전 양봉 캔들 보다 2배 김, 틱 + 1", prev_candle_length * 2, "<", candle_length)
                 return prev_tick + 1
         else: # 전 캔들이 음봉일 때
             prev_candle_length = prev_open - prev_close
             margin = prev_candle_length * 0.4
             
             if prev_close - close > margin: # 종가가 전 캔들 종가보다 margin 이상 낮을 때
-                #print(ticker, ", 음봉이고 종가가 전 캔들 종가보다 margin 이상 낮음, 틱 + 1")
+                print("음봉이고 종가가 전 캔들 종가보다 margin 이상 낮음, 틱 + 1", prev_close - close, ">", margin)
                 return prev_tick + 1
             
     return prev_tick
@@ -202,8 +205,6 @@ def try_water(tickers, tick, holdings):
     for ticker in tickers:
             if holdings[ticker] is True and tick[ticker] == 3:
                 krw = get_krw()
-                #if krw > 50000:
-                #    krw = 50000
                 invest_cost = int(krw / 3)
                 if invest_cost > 5000:
                     current_price = pyupbit.get_current_price(ticker)
@@ -284,7 +285,7 @@ def print_status(portpolio, open, close, candle, tick, holdings):
         print(ticker, "- [시가] ", open[ticker], ", [종가] ", close[ticker], ", [양음봉] ", c, ", [틱] ", t, ", [홀딩] ", h)
 
 # 포트폴리오 짜기
-portpolio = set_portpolio("minute60")
+portpolio = set_portpolio()
 
 open, close, candle, tick, holdings = init(portpolio)
 
@@ -300,8 +301,7 @@ while True:
                                                     prev_close=close, 
                                                     prev_candle=candle, 
                                                     prev_tick=tick, 
-                                                    #interval="minute5")
-                                                    interval="minute15")
+                                                    interval="minute5")
             
             print_status(portpolio, open, close, candle, tick, holdings)
             time.sleep(10)
@@ -327,7 +327,7 @@ while True:
         time.sleep(1)
         
         if try_sell(portpolio, holdings):
-            portpolio = set_portpolio("minute60")
+            portpolio = set_portpolio()
             open, close, candle, tick, holdings = init(portpolio)
             
         time.sleep(1)
