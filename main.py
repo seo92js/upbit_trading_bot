@@ -60,6 +60,8 @@ def set_invest_cost():
     krw = get_krw()
     invest_cost = int(krw / SPLIT_NUM)
     
+    return invest_cost
+    
 def set_portpolio():
     '''
     거래량 많은순으로 count개만 리턴
