@@ -3,6 +3,10 @@ import datetime
 import time
 
 IGNORE_TICKERS = ['KRW-XRP', 'KRW-FLOW', 'KRW-BTT'] # 제외종목
+SPLIT_NUM = 4 # 투자금 분할
+PROFIT_RATE = 1.006 # 익절
+PORTPOLIO_COUNT = 10
+CANDLE_MARGIN = 0.4
 
 with open("upbitKey.txt") as f:
     lines = f.readlines()
@@ -19,8 +23,6 @@ with open("upbitKey.txt") as f:
         else:
             print("Login 성공")
             print(balance)
-
-
 
 def get_krw():
     """
@@ -51,6 +53,13 @@ def init(tickers):
     
     return open, close, candle, tick, holdings
 
+def set_invest_cost():
+    '''
+    투자금 
+    '''
+    krw = get_krw()
+    invest_cost = int(krw / SPLIT_NUM)
+    
 def set_portpolio():
     '''
     거래량 많은순으로 count개만 리턴
@@ -68,8 +77,6 @@ def set_portpolio():
     for ignore_ticker in IGNORE_TICKERS:
         tickers.remove(ignore_ticker)
         
-    count = 10
-
     result = []
     portpolio = []
     
@@ -84,7 +91,7 @@ def set_portpolio():
         
     result.sort(key=lambda x:x[1])
     
-    for i in result[-count:]:
+    for i in result[-PORTPOLIO_COUNT:]:
         portpolio.append(i[0])
         
     #완만한 상승인지 하락장인지도 파악 해야할듯
@@ -178,7 +185,7 @@ def calc_tick(prev_open, prev_close, prev_candle, prev_tick, open, close, candle
         
         if prev_candle == True: # 전 캔들이 양봉일 때
             prev_candle_length = prev_close - prev_open
-            margin = prev_candle_length * 0.4
+            margin = prev_candle_length * CANDLE_MARGIN
 
             if prev_open - close > margin:
                 print("[틱 + 1] 음봉, 종가가 전 캔들 양봉 시가보다 margin 이상 낮음")
@@ -186,7 +193,7 @@ def calc_tick(prev_open, prev_close, prev_candle, prev_tick, open, close, candle
             
         else: # 전 캔들이 음봉일 때
             prev_candle_length = prev_open - prev_close
-            margin = prev_candle_length * 0.4
+            margin = prev_candle_length * CANDLE_MARGIN
             
             if prev_close - close > margin: # 종가가 전 캔들 종가보다 margin 이상 낮을 때
                 print("[틱 + 1] 음봉, 종가가 전 캔들 음봉 종가보다 margin 이상 낮음")
@@ -195,14 +202,12 @@ def calc_tick(prev_open, prev_close, prev_candle, prev_tick, open, close, candle
     print("[틱 변화 없음]")
     return prev_tick
     
-def try_buy(tickers, tick, holdings):
+def try_buy(tickers, tick, holdings, invest_cost):
     '''
     매수 시도
     '''
     for ticker in tickers:
         if holdings[ticker] is None and tick[ticker] == 3: #3틱이면
-            krw = get_krw()
-            invest_cost = int(krw / 3)
             if invest_cost > 5000:
                 current_price = pyupbit.get_current_price(ticker)
                 buy_result = upbit.buy_market_order(ticker, invest_cost)
@@ -213,17 +218,15 @@ def try_buy(tickers, tick, holdings):
                 else:
                     holdings[ticker] = True
                     tick[ticker] = 0
-                    print("[매수] ", ticker, " - 현재가 : ", current_price, ", 목표가 : ", current_price * 1.01)
+                    print("[매수] ", ticker, " - 현재가 : ", current_price)
             
                 return True
       
     return False
 
-def try_water(tickers, tick, holdings):
+def try_water(tickers, tick, holdings, invest_cost):
     for ticker in tickers:
             if holdings[ticker] is True and tick[ticker] == 3:
-                krw = get_krw()
-                invest_cost = int(krw / 3)
                 if invest_cost > 5000:
                     current_price = pyupbit.get_current_price(ticker)
                     buy_result = upbit.buy_market_order(ticker, invest_cost)
@@ -234,7 +237,7 @@ def try_water(tickers, tick, holdings):
                     else:
                         holdings[ticker] = True
                         tick[ticker] = 0
-                        print("[물타기", ticker, " - 현재가 : ", current_price, ", 목표가 : ", current_price * 1.01)
+                        print("[물타기", ticker, " - 현재가 : ", current_price)
                         
                     return True
             
@@ -248,7 +251,7 @@ def try_sell(tickers, holdings):
             if avg_buy_price is None:
                 print("avg price is None")
                 return False
-            if avg_buy_price * 1.01 < current_price:
+            if avg_buy_price * PROFIT_RATE < current_price:
                 unit = upbit.get_balance(ticker)
                 sell_result = upbit.sell_market_order(ticker, unit)
                 if sell_result is None:
@@ -256,10 +259,10 @@ def try_sell(tickers, holdings):
                     if retry_result is None:
                         pass
                     else:
-                        print("[매도] ", ticker, " - 매수가 : ", avg_buy_price, " 매도가 : ", current_price, " 1% 익절")
+                        print("[매도] ", ticker, " - 매수가 : ", avg_buy_price, " 매도가 : ", current_price)
                         return True
                 else:
-                    print("[매도] ", ticker, " - 매수가 : ", avg_buy_price, " 매도가 : ", current_price, " 1% 익절")
+                    print("[매도] ", ticker, " - 매수가 : ", avg_buy_price, " 매도가 : ", current_price)
                     return True
             
     return False
@@ -304,6 +307,8 @@ def print_status(portpolio, open, close, candle, tick, holdings):
 # 포트폴리오 짜기
 portpolio = set_portpolio()
 
+invest_cost = set_invest_cost()
+
 open, close, candle, tick, holdings = init(portpolio)
 
 while True:
@@ -326,7 +331,7 @@ while True:
             print_status(portpolio, open, close, candle, tick, holdings)
             time.sleep(10)
 
-        try_buy(portpolio, tick, holdings) # 5분봉 3틱룰로 매수 시도.
+        try_buy(portpolio, tick, holdings, invest_cost) # 5분봉 3틱룰로 매수 시도.
         
     else: # holding이 있으면
         if now.minute % 15 == 0 and 0 < now.second < 10: # 15분봉 으로 물타거나
@@ -345,12 +350,13 @@ while True:
             print_status(portpolio, open, close, candle, tick, holdings)
             time.sleep(10)
             
-        try_water(portpolio, tick, holdings) # 물타기 임시
+        try_water(portpolio, tick, holdings, invest_cost) # 물타기 임시
         
         time.sleep(1)
         
         if try_sell(portpolio, holdings):
             portpolio = set_portpolio()
+            invest_cost = set_invest_cost()
             open, close, candle, tick, holdings = init(portpolio)
             
     time.sleep(1)
